@@ -30,7 +30,7 @@ create table Customer
 (
     id         int primary key auto_increment,
     Name       varchar(150) not null,
-    Email      varchar(150) not null unique check ( Email like '%@gmail.com' or '%@facebook.com 'or
+    Email      varchar(150) not null unique check ( Email like '%@gmail.com' or '%@facebook.com ' or
                                                     '@bachkhoa-aptech.edu.vn'),
     Phone      varchar(50)  not null unique,
     Address    varchar(255),
@@ -76,13 +76,11 @@ CREATE TRIGGER check_current_date
     before insert
     on Book
     for each row
-
     set new.CreatedDate = curdate();
 CREATE TRIGGER check_current_Ticket_Date
     before insert
     on Ticket
     for each row
-
     set new.TicketDate = now();
 
 
@@ -102,8 +100,9 @@ CREATE TRIGGER trigger_cost
     ON qlms.TicketDetail
     FOR EACH ROW
 BEGIN
-    DECLARE book_price DECIMAL(10,2);
-    SELECT Price INTO book_price
+    DECLARE book_price DECIMAL(10, 2);
+    SELECT Price
+    INTO book_price
     FROM Book
     WHERE Book.ID = NEW.BookID;
 
@@ -175,42 +174,142 @@ VALUES (5, 'Tô Hoài', 3);
 # 1.	Lấy ra danh sách Book có sắp xếp giảm dần theo Price gồm các cột sau:
 # Id, Name, 	Price, Status, CategoryName, AuthorName, CreatedDate
 
-select BOOk.id, book.Name, 	Price, book.Status, C.Name, A.Name , CreatedDate
-from Book join Category C on Book.Status = C.Status join Author A on Book.Name = A.Name
-order by Price desc ;
+select BOOk.id, book.Name, Price, book.Status, C.Name, A.Name, CreatedDate
+from Book
+         join Category C on Book.Status = C.Status
+         join Author A on Book.Name = A.Name
+order by Price desc;
 
 # 2.	Lấy ra danh sách Category gồm:
 # Id, Name, TotalProduct, Status (Trong đó cột Status nếu = 0, Ẩn, = 1 là Hiển thị )
 
-select Category.Id, Category.Name, b.Price,
+select Category.Id,
+       Category.Name,
+       b.Price,
        CASE WHEN Category.Status = 0 THEN 'Ẩn' ELSE 'Hiển thị' END AS Status
-from Category join Book B on Category.Status = B.Status;
+from Category
+         join Book B on Category.Status = B.Status;
 
 #3	Truy vấn danh sách Customer gồm: Id, Name, Email, Phone, Address,CreatedDate,
 # Gender, BirthDay, Age (Age là cột suy ra từ BirthDay, Gender nếu = 0 là Nam, 1 là Nữ,2 là khác )
 
-select *,case when Customer.Gender = 0 THEN 'Nữ' ELSE 'Nam' END AS Gender, year(curdate())-year(Customer.BirthDay) Tuoi
+select *,
+       case when Customer.Gender = 0 THEN 'Nữ' ELSE 'Nam' END AS Gender,
+       year(curdate()) - year(Customer.BirthDay)                 Tuoi
 from Customer;
 
 # 4.	Truy vấn xóa Author chưa có sách nào
-DELETE FROM Author a
-WHERE NOT EXISTS (
-    SELECT 1 FROM Book b
-    WHERE b.AuthorId = a.Id
-);
+DELETE
+FROM Author a
+WHERE NOT EXISTS (SELECT 1
+                  FROM Book b
+                  WHERE b.AuthorId = a.Id);
 
 # 5.	Cập nhật Cột ToalBook trong bảng Auhor = Tổng số Book của mỗi Author theo Id của Author
 UPDATE Author a
-SET TotalBook = (
-    SELECT COUNT(*)
-    FROM Book b
-    WHERE b.AuthorId = a.Id
-)
-WHERE a.Id IN (
-    SELECT AuthorId
-    FROM Book
-    GROUP BY AuthorId
-);
+SET TotalBook = (SELECT COUNT(*)
+                 FROM Book b
+                 WHERE b.AuthorId = a.Id)
+WHERE a.Id IN (SELECT AuthorId
+               FROM Book
+               GROUP BY AuthorId);
 
-create procedure
+# 1.	View v_getBookInfo thực hiện lấy ra danh sách các Book được mượn nhiều hơn 3 cuốn
 
+CREATE VIEW v_getBookInfo AS
+SELECT id,
+       name,
+       Price,
+       count(Quantity)
+FROM Book
+         left join TicketDetail on Book.id = TicketDetail.BookId
+
+GROUP BY Book.id
+HAVING count(Quantity) >= 3;
+
+SELECT *
+FROM v_getBookInfo;
+
+# 2.	View v_getTicketList hiển thị danh sách Ticket gồm:
+# Id, TicketDate, Status, CusName, Email, Phone,TotalAmount
+# (Trong đó TotalAmount là tổng giá trị tiện phải trả,
+# cột Status nếu = 0 thì hiển thị Chưa trả, = 1 Đã trả, = 2 Quá hạn, 3 Đã hủy)
+CREATE VIEW v_getTicketList AS
+SELECT t.Id,
+       t.TicketDate,
+       CASE
+           WHEN t.Status = 0 THEN 'Chưa trả'
+           WHEN t.Status = 1 THEN 'Đã trả'
+           WHEN t.Status = 2 THEN 'Quá hạn'
+           ELSE 'Đã hủy'
+           END                           AS Status,
+       c.Name,
+       c.Email,
+       c.Phone,
+       SUM(td.DeposiPrice * td.Quantity) AS TotalAmount
+FROM Ticket t
+         JOIN Customer c ON t.CustomerID = c.id
+         join TicketDetail td on t.id = td.TicketId
+GROUP BY t.id, t.TicketDate, t.Status, c.Name, c.Email, c.Phone;
+
+select *
+from v_getticketlist;
+# Yêu cầu 3 ( Sử dụng lệnh SQL tạo thủ tục Stored Procedure )
+# 1.	Thủ tục addBookInfo thực hiện thêm mới Book, khi gọi thủ tục truyền đầy đủ các giá trị của bảng Book ( Trừ cột tự động tăng )
+# a.	Thủ tục getTicketByCustomerId hiển thị danh sách đơn hàng của khách hàng theo Id khách hàng gồm: Id, TicketDate, Status, TotalAmount (Trong đó cột Status nếu =0 Chưa trả, = 1  Đã trả, = 2 Quá hạn, 3 đã hủy ), Khi gọi thủ tục truyền vào id cuả khách hàng
+
+
+#  Tạo thủ tục
+DELIMITER //
+CREATE PROCEDURE addBookInfo(Name_in varchar(150), Staust_in tinyint, Price_in float, CreatedDate_in date,
+                             CategoryID_in int, AuthorId_in int)
+begin
+    insert into Book(Name, Status, Price, CreatedDate, CategoryId, AuthorId)
+    values (Name_in, Staust_in, Price_in, CreatedDate_in, CategoryID_in, AuthorId_in);
+end;
+//
+
+drop procedure addBookInfo;
+call addBookInfo('sach', 1, 900000, '2024/12/12', 4, 3);
+
+DELIMITER //
+CREATE PROCEDURE getTicketByCustomerId(CustomerID_in int)
+begin
+    SELECT t.CustomerId                      AS Id,
+           t.TicketDate,
+           CASE
+               WHEN t.Status = 0 THEN 'Chưa trả'
+               WHEN t.Status = 1 THEN 'Đã trả'
+               WHEN t.Status = 2 THEN 'Quá hạn'
+               ELSE 'Đã hủy'
+               END                           AS Status,
+           SUM(ti.DeposiPrice * ti.Quantity) AS TotalAmount
+    FROM Ticket t
+             JOIN Customer c ON t.CustomerID = c.id
+             JOIN TicketDetail ti ON t.id = ti.TicketID
+    WHERE t.CustomerID = @CustomerId
+    GROUP BY t.id, t.TicketDate, t.Status;
+end;
+//
+
+call getTicketByCustomerId(3);
+
+# 2.	Thủ tục getBookPaginate lấy ra danh sách sản phẩm có phân trang gồm:
+# Id, Name, Price, Sale_price, Khi gọi thủ tuc truyền vào limit và page
+
+DELIMITER //
+CREATE PROCEDURE getBookPaginate(limit_in INT,
+                                 page_in INT)
+begin
+    WITH book_paginated AS (SELECT id,
+                                   name,
+                                   Price,
+                                   RentCost Sale_price
+                            FROM Book
+                                     join TicketDetail on Book.id = TicketDetail.BookId
+                            ORDER BY id
+                            LIMIT limit_in OFFSET page_in
+        )
+    SELECT * FROM book_paginated;
+end;
+//
